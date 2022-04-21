@@ -27,16 +27,15 @@ class Youcook_Caption_DataLoader(Dataset):
         """
         Args:
         """
-        self.csv = pd.read_csv(csv)
+        self.csv = pd.read_csv(csv, dtype=str)
         self.data_dict = pickle.load(open(data_path, 'rb'))
         self.feature_dict = pickle.load(open(features_path, 'rb'))
         self.feature_framerate = feature_framerate
         self.max_words = max_words
         self.max_frames = max_frames
         self.tokenizer = tokenizer
-
         self.feature_size = self.feature_dict[self.csv["feature_file"].values[0]].shape[-1]
-
+        
         # Get iterator video ids
         video_id_list = [itm for itm in self.csv['video_id'].values]
         self.video_id2idx_dict = {video_id: id for id, video_id in enumerate(video_id_list)}
@@ -75,7 +74,11 @@ class Youcook_Caption_DataLoader(Dataset):
             start_, end_ = data_dict['start'][ind], data_dict['end'][ind]
             starts[i], ends[i] = start_, end_
             total_length_with_CLS = self.max_words - 1
-            words = self.tokenizer.tokenize(data_dict['transcript'][ind])
+            
+            if data_dict['transcript'][ind] not in ['none','None']:
+                words = self.tokenizer.tokenize(data_dict['transcript'][ind])
+            else:
+                words = []
 
             words = ["[CLS]"] + words
             if len(words) > total_length_with_CLS:

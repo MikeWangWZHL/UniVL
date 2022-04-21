@@ -19,8 +19,9 @@ from modules.optimization import BertAdam
 from modules.beam import Beam
 from torch.utils.data import DataLoader
 from dataloaders.dataloader_youcook_caption import Youcook_Caption_DataLoader
-from dataloaders.dataloader_msrvtt_caption import MSRVTT_Caption_DataLoader
+from dataloaders.dataloader_msrvtt_caption import MSRVTT_Caption_DataLoader, MSRVTT_Caption_DataLoader_1k_test
 from util import get_logger
+from tqdm import tqdm
 torch.distributed.init_process_group(backend="nccl")
 
 global logger
@@ -30,6 +31,7 @@ def get_args(description='UniVL on Caption Task'):
     parser.add_argument("--do_pretrain", action='store_true', help="Whether to run training.")
     parser.add_argument("--do_train", action='store_true', help="Whether to run training.")
     parser.add_argument("--do_eval", action='store_true', help="Whether to run eval on the dev set.")
+    parser.add_argument("--using_1k_test_split", action='store_true', help="Whether to use the 1k test set split.")
 
     parser.add_argument('--train_csv', type=str, default='data/youcookii_singlef_train.csv', help='')
     parser.add_argument('--val_csv', type=str, default='data/youcookii_singlef_val.csv', help='')
@@ -273,17 +275,29 @@ def dataloader_msrvtt_train(args, tokenizer):
 
     return dataloader, len(msrvtt_dataset), train_sampler
 
-def dataloader_msrvtt_test(args, tokenizer, split_type="test",):
-    msrvtt_testset = MSRVTT_Caption_DataLoader(
-        csv_path=args.val_csv,
-        json_path=args.data_path,
-        features_path=args.features_path,
-        max_words=args.max_words,
-        feature_framerate=args.feature_framerate,
-        tokenizer=tokenizer,
-        max_frames=args.max_frames,
-        split_type=split_type,
-    )
+def dataloader_msrvtt_test(args, tokenizer, split_type="test"):
+    if args.using_1k_test_split:
+        msrvtt_testset = MSRVTT_Caption_DataLoader_1k_test(
+            csv_path=args.val_csv,
+            json_path=args.data_path,
+            features_path=args.features_path,
+            max_words=args.max_words,
+            feature_framerate=args.feature_framerate,
+            tokenizer=tokenizer,
+            max_frames=args.max_frames,
+            split_type=split_type,
+        )
+    else:
+        msrvtt_testset = MSRVTT_Caption_DataLoader(
+            csv_path=args.val_csv,
+            json_path=args.data_path,
+            features_path=args.features_path,
+            max_words=args.max_words,
+            feature_framerate=args.feature_framerate,
+            tokenizer=tokenizer,
+            max_frames=args.max_frames,
+            split_type=split_type,
+        )
 
     test_sampler = SequentialSampler(msrvtt_testset)
     dataloader_msrvtt = DataLoader(
@@ -498,7 +512,7 @@ def eval_epoch(args, model, test_dataloader, tokenizer, device, n_gpu, nlgEvalOb
     all_result_lists = []
     all_caption_lists = []
     model.eval()
-    for batch in test_dataloader:
+    for batch in tqdm(test_dataloader):
         batch = tuple(t.to(device, non_blocking=True) for t in batch)
 
         input_ids, input_mask, segment_ids, video, video_mask, \
@@ -561,6 +575,7 @@ def eval_epoch(args, model, test_dataloader, tokenizer, device, n_gpu, nlgEvalOb
                 decode_text = ' '.join(decode_text_list)
                 decode_text = decode_text.replace(" ##", "").strip("##").strip()
                 all_result_lists.append(decode_text)
+            # print(all_result_lists)
 
             for re_idx, re_list in enumerate(caption_list):
                 decode_text_list = tokenizer.convert_ids_to_tokens(re_list)
@@ -573,7 +588,8 @@ def eval_epoch(args, model, test_dataloader, tokenizer, device, n_gpu, nlgEvalOb
                 decode_text = ' '.join(decode_text_list)
                 decode_text = decode_text.replace(" ##", "").strip("##").strip()
                 all_caption_lists.append(decode_text)
-
+            # print(all_caption_lists)
+            
     # Save full results
     if test_set is not None and hasattr(test_set, 'iter2video_pairs_dict'):
         hyp_path = os.path.join(args.output_dir, "hyp_complete_results.txt")

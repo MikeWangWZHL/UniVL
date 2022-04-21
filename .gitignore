@@ -1,2 +1,6 @@
 .git
 .idea
+data/
+ckpts/
+*.bin
+*.zip
